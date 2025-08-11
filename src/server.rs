@@ -28,13 +28,7 @@ struct WithAuth {
 
 #[async_trait::async_trait]
 impl GitConfig for WithAuth {
-    async fn rewrite(&self, original_path: String) -> PathBuf {
-        let path = fs::canonicalize(
-            PathBuf::from("./repos".to_string()
-                + &original_path))
-            .unwrap().to_str().unwrap().to_string();
-
-        tracing::info!("rewrite: {}", path);
+    async fn rewrite(&self, path: String) -> PathBuf {
         self.inner.rewrite(path).await
     }
 
@@ -62,8 +56,8 @@ impl GitConfig for WithAuth {
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
     tracing_subscriber::fmt().init();
-
-    let root = fs::canonicalize(PathBuf::from("./repos".to_string()))?;
+    let args = ActixServerArgs::parse();
+    let root = PathBuf::from(args.root);
 
     if !root.exists() {
         tracing::warn!("root path not exists");
@@ -73,21 +67,20 @@ pub async fn main() -> io::Result<()> {
     let base = ActixGitHttp {
         config: GitHttpConfig {
             root,
-            port: 80,
-            addr: String::from("localhost"),
+            port: args.port,
+            addr: args.addr,
         },
     };
 
     let auth = WithAuth { inner: base };
 
-    let bind_addr = format!("{}:{}", String::from("localhost"), 80);
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(auth.clone()))
             .wrap(actix_web::middleware::Logger::default())
             .configure(|x| actix_git_router::<WithAuth>(x))
     })
-        .bind(bind_addr)?
+        .bind("0.0.0.0:80")?
         .run()
         .await
 }
