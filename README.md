@@ -1,7 +1,4 @@
 # Git-Http-Backend
-[![crates.io](https://img.shields.io/crates/v/git-http-backend.svg)](https://crates.io/crates/git-http-backend)
-[![Released API docs](https://docs.rs/git-http-backend/badge.svg)](https://docs.rs/git-http-backend)
-
 
 this is a simple http server for git
 it can be used as a backend for git-http-backend

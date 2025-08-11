@@ -1,4 +1,5 @@
-use crate::GitConfig;
+use crate::actix::ensure_auth;
+use crate::{GitConfig, GitOperation};
 use actix_web::http::header::HeaderValue;
 use actix_web::http::{header, StatusCode};
 use actix_web::web::Payload;
@@ -17,6 +18,11 @@ pub async fn git_upload_pack(
     let uri = request.uri();
     let path = uri.path().to_string().replace("/git-upload-pack", "");
     let path = service.rewrite(path).await;
+
+    if let Err(resp) = ensure_auth(&request, &service, &path, GitOperation::UploadPack).await {
+        return resp;
+    }
+
     let version = request
         .headers()
         .get("Git-Protocol")

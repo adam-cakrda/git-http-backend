@@ -1,9 +1,28 @@
-use crate::GitConfig;
+use crate::actix::ensure_auth;
+use crate::{GitConfig, GitOperation};
 use actix_files::NamedFile;
 use actix_web::http::header;
 use actix_web::http::header::HeaderValue;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use std::collections::HashMap;
+
+fn repo_prefix_from_uri_path(path: &str) -> String {
+    if let Some(i) = path.find(".git") {
+        path[..i + 4].to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+fn op_from_path(path: &str) -> GitOperation {
+    if path.contains("objects/pack/") {
+        GitOperation::ObjectsPack
+    } else if path.contains("objects/info/packs") {
+        GitOperation::ObjectsInfoPacks
+    } else {
+        GitOperation::GetText
+    }
+}
 
 pub async fn get_text_file(
     request: HttpRequest,
@@ -11,6 +30,16 @@ pub async fn get_text_file(
 ) -> impl Responder {
     let uri = request.uri();
     let path = uri.path().to_string();
+
+    // Determine repo root for auth
+    let repo_prefix = repo_prefix_from_uri_path(&path);
+    let repo_path = service.rewrite(repo_prefix).await;
+    let op = op_from_path(&path);
+
+    if let Err(resp) = ensure_auth(&request, &service, &repo_path, op).await {
+        return resp;
+    }
+
     let path = service.rewrite(path).await;
     let mut resp = HashMap::new();
     resp.insert("Pragma".to_string(), "no-cache".to_string());

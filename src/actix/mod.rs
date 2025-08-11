@@ -25,6 +25,40 @@ pub mod refs;
 /// objects pack handler
 pub mod objects_pack;
 
+use actix_web::HttpResponse;
+use std::path::PathBuf;
+use crate::{AuthInput, GitOperation};
+
+pub(crate) async fn ensure_auth<T: GitConfig>(
+    req: &HttpRequest,
+    service: &Data<T>,
+    repo_path: &PathBuf,
+    op: GitOperation,
+) -> Result<(), HttpResponse> {
+    let is_public = service.is_public_repo(repo_path).await;
+    let anon_ok = service.allow_anonymous(op).await;
+
+    if is_public && anon_ok {
+        return Ok(());
+    }
+
+    // Build owned auth input so the future remains Send.
+    let authorization = req
+        .headers()
+        .get(actix_web::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_owned());
+
+    match service.authenticate(AuthInput { authorization }).await {
+        Ok(()) => Ok(()),
+        Err(()) => Err(
+            HttpResponse::Unauthorized()
+                .append_header(("WWW-Authenticate", "Basic realm=\"git\""))
+                .finish(),
+        ),
+    }
+}
+
 /// Actix-web Router Export
 pub fn router<T>(cfg: &mut web::ServiceConfig)
 where

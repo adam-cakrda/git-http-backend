@@ -1,4 +1,5 @@
-use crate::GitConfig;
+use crate::actix::ensure_auth;
+use crate::{GitConfig, GitOperation};
 use actix_files::NamedFile;
 use actix_web::cookie::time;
 use actix_web::cookie::time::format_description;
@@ -13,7 +14,12 @@ pub async fn objects_info_packs(
 ) -> impl Responder {
     let uri = request.uri();
     let path = uri.path().to_string();
-    let repo_path = service.rewrite(path).await;
+    let repo_path = service.rewrite(path.clone()).await;
+
+    if let Err(resp) = ensure_auth(&request, &service, &repo_path, GitOperation::ObjectsInfoPacks).await {
+        return resp;
+    }
+
     let path = "objects/info/packs".to_string();
     let mut map = HashMap::new();
     let time = time::OffsetDateTime::now_utc();

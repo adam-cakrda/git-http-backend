@@ -1,4 +1,5 @@
-use crate::GitConfig;
+use crate::actix::ensure_auth;
+use crate::{GitConfig, GitOperation};
 use actix_web::http::header::HeaderValue;
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpRequest, HttpResponseBuilder, Responder};
@@ -9,15 +10,27 @@ pub async fn info_refs(request: HttpRequest, service: web::Data<impl GitConfig>)
     let uri = request.uri();
     let path = uri.path().to_string().replace("/info/refs", "");
     let path = service.rewrite(path).await;
+
     let query = uri.query().unwrap_or("");
-    let service = query.split('=').map(|x| x.to_string()).collect::<Vec<_>>();
-    let service = service[1].clone();
-    if !(service != "git-upload-pack" || service != "git-receive-pack") {
+    let svc_parts = query.split('=').map(|x| x.to_string()).collect::<Vec<_>>();
+    let svc_raw = svc_parts.get(1).cloned().unwrap_or_else(|| "".to_string());
+
+    if !(svc_raw != "git-upload-pack" || svc_raw != "git-receive-pack") {
         return Err(actix_web::error::ErrorUnsupportedMediaType(
             "service not git-upload-pack",
         ));
     }
-    let service_name = service.replace("git-", "");
+    let service_name = svc_raw.replace("git-", "");
+    
+    let op = match service_name.as_str() {
+        "upload-pack" => GitOperation::InfoRefsUploadPack,
+        "receive-pack" => GitOperation::InfoRefsReceivePack,
+        _ => GitOperation::Other,
+    };
+    if let Err(resp) = ensure_auth(&request, &service, &path, op).await {
+        return Ok(resp);
+    }
+
     let version = request
         .headers()
         .get("Git-Protocol")
@@ -25,6 +38,7 @@ pub async fn info_refs(request: HttpRequest, service: web::Data<impl GitConfig>)
         .to_str()
         .map(|s| s.to_string())
         .unwrap_or("".to_string());
+
     let mut cmd = Command::new("git");
     cmd.arg(service_name.clone());
     cmd.arg("--stateless-rpc");

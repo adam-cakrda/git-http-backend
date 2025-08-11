@@ -1,4 +1,5 @@
-use crate::GitConfig;
+use crate::actix::ensure_auth;
+use crate::{GitConfig, GitOperation};
 use actix_files::NamedFile;
 use actix_web::cookie::time;
 use actix_web::cookie::time::format_description;
@@ -7,13 +8,29 @@ use actix_web::http::header::HeaderValue;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use std::collections::HashMap;
 
+fn repo_prefix_from_uri_path(path: &str) -> String {
+    if let Some(i) = path.find(".git") {
+        path[..i + 4].to_string()
+    } else {
+        path.to_string()
+    }
+}
+
 pub async fn objects_pack(
     request: HttpRequest,
     service: web::Data<impl GitConfig>,
 ) -> impl Responder {
     let uri = request.uri();
     let path = uri.path().to_string();
-    let req_file = service.rewrite(path).await;
+
+    let repo_prefix = repo_prefix_from_uri_path(&path);
+    let repo_path = service.rewrite(repo_prefix).await;
+
+    if let Err(resp) = ensure_auth(&request, &service, &repo_path, GitOperation::ObjectsPack).await {
+        return resp;
+    }
+
+    let req_file = service.rewrite(path.clone()).await;
     let mut map = HashMap::new();
     let time = time::OffsetDateTime::now_utc();
     let expires = time::OffsetDateTime::now_utc() + time::Duration::days(1);

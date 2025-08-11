@@ -1,4 +1,5 @@
-use crate::GitConfig;
+use crate::actix::ensure_auth;
+use crate::{GitConfig, GitOperation};
 use actix_web::http::{header, StatusCode};
 use actix_web::web::Payload;
 use actix_web::{web, HttpRequest, HttpResponse, HttpResponseBuilder, Responder};
@@ -17,6 +18,11 @@ pub async fn git_receive_pack(
     let uri = request.uri();
     let path = uri.path().to_string().replace("/git-receive-pack", "");
     let path = service.rewrite(path).await;
+
+    if let Err(resp) = ensure_auth(&request, &service, &path, GitOperation::ReceivePack).await {
+        return resp;
+    }
+
     if !path.join("HEAD").exists() || !path.join("config").exists() {
         return HttpResponse::BadRequest().body("Repository not found or invalid.");
     }
@@ -31,7 +37,8 @@ pub async fn git_receive_pack(
 
     let version = request
         .headers()
-        .get("Git-Protocol")
+        .get(header::CONTENT_ENCODING)
+        .and_then(|_| request.headers().get("Git-Protocol"))
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
