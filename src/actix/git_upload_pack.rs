@@ -32,7 +32,7 @@ pub async fn git_upload_pack(
         .unwrap_or("".to_string());
 
     let mut resp = HttpResponseBuilder::new(StatusCode::OK);
-    resp.append_header(("Content-Type", "application/x-git-upload-pack-advertise"));
+    resp.append_header(("Content-Type", "application/x-git-upload-pack-result"));
     resp.append_header(("Connection", "Keep-Alive"));
     resp.append_header(("Transfer-Encoding", "chunked"));
     resp.append_header(("X-Content-Type-Options", "nosniff"));
